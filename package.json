@@ -1,0 +1,90 @@
+{
+  "name": "coach-potato",
+  "displayName": "Coach Potato",
+  "description": "A lightweight AI coding companion that reviews edits on save and suggests improvements.",
+  "version": "0.0.1",
+  "publisher": "coach-potato",
+  "engines": {
+    "vscode": "^1.89.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Coach Potato",
+      "properties": {
+        "coachPotato.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable save-time AI coaching."
+        },
+        "coachPotato.provider": {
+          "type": "string",
+          "default": "openai",
+          "enum": ["openai", "compatible"],
+          "description": "AI provider profile to use for API calls."
+        },
+        "coachPotato.model": {
+          "type": "string",
+          "default": "gpt-4.1-mini",
+          "description": "Model name sent to the AI API."
+        },
+        "coachPotato.apiBaseUrl": {
+          "type": "string",
+          "default": "https://api.openai.com/v1",
+          "description": "Base URL for the AI API (OpenAI-compatible)."
+        },
+        "coachPotato.apiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "API key used to authenticate requests. Prefer setting environment variable `COACH_POTATO_API_KEY`; this setting is a fallback."
+        },
+        "coachPotato.noiseLevel": {
+          "type": "string",
+          "enum": ["quiet", "balanced", "chatty"],
+          "default": "balanced",
+          "description": "How many suggestions Coach Potato should return."
+        },
+        "coachPotato.subtlety": {
+          "type": "string",
+          "enum": ["gentle", "direct", "strict"],
+          "default": "direct",
+          "description": "Tone used when presenting suggestions."
+        },
+        "coachPotato.maxFileSizeKb": {
+          "type": "number",
+          "default": 256,
+          "minimum": 16,
+          "maximum": 2048,
+          "description": "Maximum file size in KB to analyze on save."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "coachPotato.analyzeCurrentFile",
+        "title": "Coach Potato: Analyze Current File"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.89.0",
+    "@typescript-eslint/eslint-plugin": "^7.7.1",
+    "@typescript-eslint/parser": "^7.7.1",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.5"
+  }
+}
