@@ -11,7 +11,11 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onView:coachPotato.sidebar",
+    "onCommand:coachPotato.analyzeCurrentFile",
+    "onCommand:coachPotato.analyzeCurrentDiff",
+    "onCommand:coachPotato.analyzeAllChanges"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -23,21 +27,29 @@
           "default": true,
           "description": "Enable or disable save-time AI coaching."
         },
+        "coachPotato.analyzeOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run analysis automatically when a file is saved."
+        },
         "coachPotato.provider": {
           "type": "string",
           "default": "openai",
-          "enum": ["openai", "compatible"],
-          "description": "AI provider profile to use for API calls."
+          "enum": [
+            "openai",
+            "anthropic"
+          ],
+          "description": "AI provider to use for API calls."
         },
         "coachPotato.model": {
           "type": "string",
           "default": "gpt-4.1-mini",
-          "description": "Model name sent to the AI API."
+          "description": "Model name sent to the selected provider API."
         },
         "coachPotato.apiBaseUrl": {
           "type": "string",
           "default": "https://api.openai.com/v1",
-          "description": "Base URL for the AI API (OpenAI-compatible)."
+          "description": "Base URL for the selected provider API."
         },
         "coachPotato.apiKey": {
           "type": "string",
@@ -46,13 +58,21 @@
         },
         "coachPotato.noiseLevel": {
           "type": "string",
-          "enum": ["quiet", "balanced", "chatty"],
+          "enum": [
+            "quiet",
+            "balanced",
+            "chatty"
+          ],
           "default": "balanced",
           "description": "How many suggestions Coach Potato should return."
         },
         "coachPotato.subtlety": {
           "type": "string",
-          "enum": ["gentle", "direct", "strict"],
+          "enum": [
+            "gentle",
+            "direct",
+            "strict"
+          ],
           "default": "direct",
           "description": "Tone used when presenting suggestions."
         },
@@ -69,8 +89,43 @@
       {
         "command": "coachPotato.analyzeCurrentFile",
         "title": "Coach Potato: Analyze Current File"
+      },
+      {
+        "command": "coachPotato.analyzeCurrentDiff",
+        "title": "Coach Potato: Analyze Current Diff"
+      },
+      {
+        "command": "coachPotato.analyzeAllChanges",
+        "title": "Coach Potato: Analyze All Changes"
       }
-    ]
+    ],
+    "keybindings": [
+      {
+        "command": "coachPotato.analyzeCurrentDiff",
+        "key": "cmd+alt+p",
+        "mac": "cmd+alt+p",
+        "linux": "ctrl+alt+p",
+        "when": "editorTextFocus"
+      }
+    ],
+    "views": {
+      "coachPotato": [
+        {
+          "id": "coachPotato.sidebar",
+          "name": "Coach Potato",
+          "type": "webview"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "coachPotato",
+          "title": "Coach Potato",
+          "icon": "media/coach-potato.svg"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -86,5 +141,10 @@
     "@typescript-eslint/parser": "^7.7.1",
     "eslint": "^8.57.0",
     "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.46",
+    "@ai-sdk/openai": "^3.0.30",
+    "ai": "^6.0.94"
   }
 }
