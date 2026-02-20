@@ -1,9 +1,6 @@
-.vscode/**
-.vscode-test/**
-src/**
-.eslintrc.json
-tsconfig.json
-.gitignore
-README.md
-**/*.map
-**/*.ts
+**
+!package.json
+!README.md
+!LICENSE
+!media/**
+!out/extension.js
