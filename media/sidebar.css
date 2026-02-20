@@ -158,9 +158,11 @@ h1 {
 }
 
 .content details.accordion {
-  margin-top: 8px;
-  border-top: 1px dashed color-mix(in srgb, var(--vscode-editorWidget-border) 65%, transparent);
-  padding-top: 6px;
+  padding: 6px;
+
+  &:first-child {
+    border-top: 1px dashed color-mix(in srgb, var(--vscode-editorWidget-border) 65%, transparent);
+  }
 }
 
 .content details.accordion > summary {
