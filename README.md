@@ -4,6 +4,12 @@ Coach Potato is your tiny coding sidekick in VS Code.
 You save a file, it peeks at your diff, and gives one sharp coaching point (or tells you your code is clean).
 Think less "wall of AI text", more "one useful nudge at the right time".
 
+<p align="center">
+  <video src="example/coach-potato.mp4" controls width="360"></video>
+</p>
+
+[Open demo video](example/coach-potato.mp4)
+
 ## Links
 
 - VS Code Marketplace: `TODO_ADD_MARKETPLACE_LINK`
