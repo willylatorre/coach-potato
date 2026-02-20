@@ -5,10 +5,10 @@ You save a file, it peeks at your diff, and gives one sharp coaching point (or t
 Think less "wall of AI text", more "one useful nudge at the right time".
 
 <p align="center">
-  <video src="example/coach-potato.mp4" controls width="360"></video>
+  <img src="example/coach-potato.gif" alt="Coach Potato demo" width="360" />
 </p>
 
-[Open demo video](example/coach-potato.mp4)
+[Open demo GIF](example/coach-potato.gif)
 
 ## Links
 
