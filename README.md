@@ -13,7 +13,7 @@ Think less "wall of AI text", more "one useful nudge at the right time".
 ## Links
 
 - VS Code Marketplace: `TODO_ADD_MARKETPLACE_LINK`
-- GitHub Releases: `TODO_ADD_RELEASES_LINK`
+- GitHub Releases:  [v0.0.1](https://github.com/willylatorre/coach-potato/releases/tag/v0.0.1)
 
 ## Install (Start Here)
 
