@@ -9,7 +9,7 @@ Coach Potato is a starter VS Code extension that analyzes a file whenever you sa
 - Configurable behavior:
   - `coachPotato.noiseLevel`: `quiet | balanced | chatty`
   - `coachPotato.subtlety`: `gentle | direct | strict`
-- OpenAI-compatible API integration (`/chat/completions`).
+- Provider selection: `coachPotato.provider`: `openai | anthropic`.
 
 ## Setup
 
@@ -38,5 +38,5 @@ Coach Potato is a starter VS Code extension that analyzes a file whenever you sa
 ## Notes
 
 - This repository intentionally **does not** include any real API key.
-- You can point `coachPotato.apiBaseUrl` at any OpenAI-compatible endpoint.
+- You can override `coachPotato.apiBaseUrl` for the selected provider endpoint.
 - For production use, consider adding diff-only analysis and debounce/throttling.

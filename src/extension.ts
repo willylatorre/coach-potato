@@ -1,36 +1,52 @@
 import * as vscode from 'vscode';
 
-type NoiseLevel = 'quiet' | 'balanced' | 'chatty';
-type Subtlety = 'gentle' | 'direct' | 'strict';
-
-interface CoachSettings {
-  enabled: boolean;
-  provider: 'openai' | 'compatible';
-  model: string;
-  apiBaseUrl: string;
-  apiKey: string;
-  noiseLevel: NoiseLevel;
-  subtlety: Subtlety;
-  maxFileSizeKb: number;
-}
-
-interface ChatCompletionChoice {
-  message?: {
-    content?: string;
-  };
-}
-
-interface ChatCompletionResponse {
-  choices?: ChatCompletionChoice[];
-}
+import { analyzeDocument } from './analysis/analyzeDocument';
+import { getSettings } from './config/settings';
+import { normalizeBubbleForHintMode } from './services/feedbackService';
+import { getChangedFilesFromGit } from './services/gitService';
+import { requestFollowUp } from './services/coachingService';
+import { SidebarProvider } from './ui/sidebarProvider';
 
 const OUTPUT_CHANNEL = vscode.window.createOutputChannel('Coach Potato');
 
 export function activate(context: vscode.ExtensionContext): void {
   OUTPUT_CHANNEL.appendLine('Coach Potato activated.');
 
-  const saveListener = vscode.workspace.onDidSaveTextDocument(async (doc) => {
-    await analyzeDocument(doc, true);
+  const sidebarProvider = new SidebarProvider(context.extensionUri, {
+    onAnalyzeCurrent: () => {
+      void vscode.commands.executeCommand('coachPotato.analyzeCurrentFile');
+    },
+    onAnalyzeAllChanges: () => {
+      void vscode.commands.executeCommand('coachPotato.analyzeAllChanges');
+    },
+    onFollowUp: (question: string) => {
+      void handleFollowUp(question, sidebarProvider);
+    },
+    onAnalyzeWholeFile: (fileName: string) => {
+      void handleAnalyzeWholeFile(fileName, sidebarProvider);
+    }
+  });
+
+  sidebarProvider.setApiKeyStatus(Boolean(getSettings().apiKey));
+
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('coachPotato.sidebar', sidebarProvider)
+  );
+
+  const settingsListener = vscode.workspace.onDidChangeConfiguration((event) => {
+    if (event.affectsConfiguration('coachPotato.apiKey')) {
+      sidebarProvider.setApiKeyStatus(Boolean(getSettings().apiKey));
+    }
+  });
+
+  const saveListener = vscode.workspace.onDidSaveTextDocument(async (document) => {
+    await analyzeDocument({
+      document,
+      triggeredBySave: true,
+      requireDiff: true,
+      sidebarProvider,
+      outputChannel: OUTPUT_CHANNEL
+    });
   });
 
   const manualCommand = vscode.commands.registerCommand('coachPotato.analyzeCurrentFile', async () => {
@@ -40,139 +56,152 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    await analyzeDocument(editor.document, false);
+    await analyzeDocument({
+      document: editor.document,
+      triggeredBySave: false,
+      requireDiff: false,
+      sidebarProvider,
+      outputChannel: OUTPUT_CHANNEL
+    });
   });
 
-  context.subscriptions.push(saveListener, manualCommand, OUTPUT_CHANNEL);
+  const analyzeCurrentDiffCommand = vscode.commands.registerCommand('coachPotato.analyzeCurrentDiff', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      void vscode.window.showInformationMessage('Coach Potato: Open a file to analyze first.');
+      return;
+    }
+
+    await analyzeDocument({
+      document: editor.document,
+      triggeredBySave: false,
+      requireDiff: true,
+      sidebarProvider,
+      outputChannel: OUTPUT_CHANNEL
+    });
+  });
+
+  const analyzeAllChangesCommand = vscode.commands.registerCommand('coachPotato.analyzeAllChanges', async () => {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      void vscode.window.showInformationMessage('Coach Potato: Open a workspace folder first.');
+      return;
+    }
+
+    const changedFiles = await getChangedFilesFromGit(workspaceFolder.uri.fsPath, OUTPUT_CHANNEL);
+    if (changedFiles.length === 0) {
+      void vscode.window.showInformationMessage('Coach Potato: No changed files found to analyze.');
+      return;
+    }
+
+    let analyzedCount = 0;
+    let failedCount = 0;
+
+    for (const filePath of changedFiles) {
+      try {
+        const document = await vscode.workspace.openTextDocument(filePath);
+        await analyzeDocument({
+          document,
+          triggeredBySave: true,
+          sidebarProvider,
+          outputChannel: OUTPUT_CHANNEL
+        });
+        analyzedCount += 1;
+      } catch (error: unknown) {
+        failedCount += 1;
+        const message = error instanceof Error ? error.message : String(error);
+        OUTPUT_CHANNEL.appendLine(`Coach Potato analyze-all error for ${filePath}: ${message}`);
+      }
+    }
+
+    void vscode.window.showInformationMessage(
+      `Coach Potato: analyzed ${analyzedCount} changed file(s)${failedCount ? `, ${failedCount} failed` : ''}.`
+    );
+  });
+
+  context.subscriptions.push(
+    saveListener,
+    manualCommand,
+    analyzeCurrentDiffCommand,
+    analyzeAllChangesCommand,
+    settingsListener,
+    OUTPUT_CHANNEL
+  );
+}
+
+async function handleFollowUp(question: string, sidebarProvider: SidebarProvider): Promise<void> {
+  const settings = getSettings();
+  sidebarProvider.setApiKeyStatus(Boolean(settings.apiKey));
+
+  const latestRun = sidebarProvider.getLatestRunContext();
+  if (!latestRun) {
+    void vscode.window.showInformationMessage('Coach Potato: Run an analysis first, then ask a follow-up.');
+    return;
+  }
+
+  if (!settings.apiKey) {
+    void vscode.window.showErrorMessage('Coach Potato: Missing API key. Add it in settings first.');
+    return;
+  }
+
+  sidebarProvider.setThinkingLabel('Thinking... follow-up');
+  try {
+    sidebarProvider.addMessages([
+      {
+        timestamp: latestRun.timestamp,
+        fileName: latestRun.fileName,
+        role: 'user',
+        content: question
+      }
+    ]);
+
+    const response = await requestFollowUp({
+      settings,
+      question
+    });
+
+    if (!response) {
+      return;
+    }
+
+    OUTPUT_CHANNEL.appendLine(`\n=== ${new Date().toISOString()} | Follow-up (${latestRun.fileName}) ===`);
+    OUTPUT_CHANNEL.appendLine(`Q: ${question}`);
+    OUTPUT_CHANNEL.appendLine(response);
+
+    sidebarProvider.addMessages([
+      {
+        timestamp: latestRun.timestamp,
+        fileName: latestRun.fileName,
+        role: 'assistant',
+        content: normalizeBubbleForHintMode(response)
+      }
+    ]);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    OUTPUT_CHANNEL.appendLine(`Coach Potato follow-up error: ${message}`);
+    void vscode.window.showErrorMessage(`Coach Potato follow-up failed: ${message}`);
+  } finally {
+    sidebarProvider.setThinkingLabel('');
+  }
+}
+
+async function handleAnalyzeWholeFile(fileName: string, sidebarProvider: SidebarProvider): Promise<void> {
+  try {
+    const document = await vscode.workspace.openTextDocument(fileName);
+    await analyzeDocument({
+      document,
+      triggeredBySave: false,
+      requireDiff: false,
+      sidebarProvider,
+      outputChannel: OUTPUT_CHANNEL
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    OUTPUT_CHANNEL.appendLine(`Coach Potato whole-file analysis error: ${message}`);
+    void vscode.window.showErrorMessage(`Coach Potato failed to analyze whole file: ${message}`);
+  }
 }
 
 export function deactivate(): void {
   OUTPUT_CHANNEL.dispose();
-}
-
-async function analyzeDocument(document: vscode.TextDocument, triggeredBySave: boolean): Promise<void> {
-  const settings = getSettings();
-
-  if (!settings.enabled) {
-    return;
-  }
-
-  if (document.isUntitled || document.uri.scheme !== 'file') {
-    return;
-  }
-
-  if (document.getText().trim().length === 0) {
-    return;
-  }
-
-  const byteLength = Buffer.byteLength(document.getText(), 'utf8');
-  const maxBytes = settings.maxFileSizeKb * 1024;
-  if (byteLength > maxBytes) {
-    OUTPUT_CHANNEL.appendLine(`Skipping ${document.fileName}: file too large (${Math.ceil(byteLength / 1024)}KB).`);
-    return;
-  }
-
-  try {
-    const feedback = await requestCoaching(document, settings);
-    if (!feedback) {
-      return;
-    }
-
-    OUTPUT_CHANNEL.appendLine(`\n=== ${new Date().toISOString()} | ${document.fileName} ===`);
-    OUTPUT_CHANNEL.appendLine(feedback);
-    OUTPUT_CHANNEL.show(true);
-
-    if (!triggeredBySave) {
-      void vscode.window.showInformationMessage('Coach Potato analysis complete. Check the output panel.');
-    }
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    OUTPUT_CHANNEL.appendLine(`Coach Potato error: ${message}`);
-    if (!triggeredBySave) {
-      void vscode.window.showErrorMessage(`Coach Potato failed: ${message}`);
-    }
-  }
-}
-
-function getSettings(): CoachSettings {
-  const cfg = vscode.workspace.getConfiguration('coachPotato');
-  const envKey = process.env.COACH_POTATO_API_KEY ?? '';
-
-  return {
-    enabled: cfg.get<boolean>('enabled', true),
-    provider: cfg.get<'openai' | 'compatible'>('provider', 'openai'),
-    model: cfg.get<string>('model', 'gpt-4.1-mini'),
-    apiBaseUrl: cfg.get<string>('apiBaseUrl', 'https://api.openai.com/v1').replace(/\/$/, ''),
-    apiKey: envKey || cfg.get<string>('apiKey', ''),
-    noiseLevel: cfg.get<NoiseLevel>('noiseLevel', 'balanced'),
-    subtlety: cfg.get<Subtlety>('subtlety', 'direct'),
-    maxFileSizeKb: cfg.get<number>('maxFileSizeKb', 256)
-  };
-}
-
-async function requestCoaching(document: vscode.TextDocument, settings: CoachSettings): Promise<string> {
-  if (!settings.apiKey) {
-    throw new Error('Missing API key. Set COACH_POTATO_API_KEY or coachPotato.apiKey.');
-  }
-
-  const prompt = buildPrompt(document, settings.noiseLevel, settings.subtlety);
-  const endpoint = `${settings.apiBaseUrl}/chat/completions`;
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${settings.apiKey}`
-    },
-    body: JSON.stringify({
-      model: settings.model,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are Coach Potato, a concise senior engineer giving actionable code review feedback. Focus on correctness, readability, maintainability, and potential bugs. Prefer bullet points.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: settings.noiseLevel === 'quiet' ? 0.2 : settings.noiseLevel === 'balanced' ? 0.5 : 0.8
-    })
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`API request failed (${response.status}): ${text}`);
-  }
-
-  const payload = (await response.json()) as ChatCompletionResponse;
-  return payload.choices?.[0]?.message?.content?.trim() ?? '';
-}
-
-function buildPrompt(document: vscode.TextDocument, noiseLevel: NoiseLevel, subtlety: Subtlety): string {
-  const language = document.languageId;
-  const maxItems = noiseLevel === 'quiet' ? 3 : noiseLevel === 'balanced' ? 6 : 10;
-
-  const toneInstruction =
-    subtlety === 'gentle'
-      ? 'Use supportive language and avoid harsh wording.'
-      : subtlety === 'direct'
-        ? 'Be direct and practical, without being rude.'
-        : 'Be strict: call out risky patterns clearly and prioritize high-impact issues.';
-
-  return [
-    `Review this ${language} file that was just saved.`,
-    `Return at most ${maxItems} suggestions, sorted by impact.`,
-    toneInstruction,
-    'For each point, include:',
-    '- issue summary',
-    '- why it matters',
-    '- concrete fix',
-    '',
-    'Code:',
-    '```',
-    document.getText(),
-    '```'
-  ].join('\n');
 }
