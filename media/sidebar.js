@@ -2,6 +2,8 @@ const vscode = acquireVsCodeApi();
 const container = document.getElementById('messages');
 const warning = document.getElementById('apiWarning');
 const thinking = document.getElementById('thinking');
+const resultStatus = document.getElementById('resultStatus');
+const messagesWrap = document.querySelector('.messagesWrap');
 const coachNowBtn = document.getElementById('coachNowBtn');
 const followUpForm = document.getElementById('followUpForm');
 const followUpInput = document.getElementById('followUpInput');
@@ -85,21 +87,52 @@ const renderMarkdown = (value) => {
     return '';
   }
 
-  const fixMatch = normalized.match(/(?:^|\n)(?:\*\*Fix:\*\*|Fix:)\s*/i);
-  if (!fixMatch) {
+  const sectionMatches = [
+    ...normalized.matchAll(/(?:\*\*Why it matters:\*\*|Why it matters:|(?:\*\*Fix:\*\*|Fix:))\s*/gi)
+  ].map((match) => {
+    const raw = match[0] || '';
+    const label = /why it matters/i.test(raw) ? 'why' : 'fix';
+    return {
+      label,
+      index: match.index ?? -1,
+      markerLength: raw.length
+    };
+  }).filter((item) => item.index >= 0);
+
+  if (sectionMatches.length === 0) {
     return renderWithCodeFences(normalized);
   }
 
-  const markerIndex = fixMatch.index ?? -1;
-  if (markerIndex < 0) {
-    return renderWithCodeFences(normalized);
+  sectionMatches.sort((a, b) => a.index - b.index);
+  const firstMarkerIndex = sectionMatches[0].index;
+  const hintPart = normalized.slice(0, firstMarkerIndex).trim();
+  const sections = [];
+
+  for (let i = 0; i < sectionMatches.length; i += 1) {
+    const current = sectionMatches[i];
+    const next = sectionMatches[i + 1];
+    const start = current.index + current.markerLength;
+    const end = next ? next.index : normalized.length;
+    const body = normalized.slice(start, end).trim();
+    if (body) {
+      sections.push({ label: current.label, body });
+    }
   }
 
-  const hintPart = normalized.slice(0, markerIndex).trim();
-  const fixPart = normalized.slice(markerIndex + fixMatch[0].length).trim();
   let html = renderWithCodeFences(hintPart);
-  if (fixPart) {
-    html += '<details class="fix"><summary>See fix</summary>' + renderWithCodeFences(fixPart) + '</details>';
+  for (const section of sections) {
+    if (section.label === 'why') {
+      html +=
+        '<details class="accordion why"><summary>Why it matters</summary>' +
+        renderWithCodeFences(section.body) +
+        '</details>';
+      continue;
+    }
+
+    html +=
+      '<details class="accordion fix"><summary>See fix</summary>' +
+      renderWithCodeFences(section.body) +
+      '</details>';
   }
 
   return html;
@@ -122,7 +155,7 @@ const renderMessageAction = (action) => {
 };
 
 window.addEventListener('message', (event) => {
-  const { type, messages, hasApiKey, thinkingLabel } = event.data || {};
+  const { type, messages, hasApiKey, thinkingLabel, resultStatus: nextResultStatus } = event.data || {};
   if (type !== 'messages') {
     return;
   }
@@ -139,6 +172,17 @@ window.addEventListener('message', (event) => {
     } else {
       thinking.className = 'thinking hidden';
       thinking.textContent = 'Thinking...';
+    }
+  }
+
+  if (resultStatus) {
+    const activeResultStatus = String(nextResultStatus ?? '').trim();
+    if (activeResultStatus) {
+      resultStatus.className = 'resultStatus';
+      resultStatus.textContent = activeResultStatus;
+    } else {
+      resultStatus.className = 'resultStatus hidden';
+      resultStatus.textContent = '';
     }
   }
 
@@ -166,19 +210,27 @@ window.addEventListener('message', (event) => {
   }
 
   container.className = '';
+  const newMessageCount = Math.max(0, messages.length - previousMessageCount);
+  const firstNewMessageIndex = messages.length - newMessageCount;
+  let renderedMessageIndex = 0;
   container.innerHTML = groups
     .map((group) => {
       const safeFile = escapeHtml(group.fileName);
       const safeTime = escapeHtml(group.timestamp);
       const bubbles = group.items
         .map((item) => {
+          const isNewMessage = renderedMessageIndex >= firstNewMessageIndex;
+          renderedMessageIndex += 1;
           const role = item.role === 'user' ? 'user' : 'assistant';
           const messageContent = role === 'user' ? renderTextBlocks(item.content ?? '') : renderMarkdown(item.content ?? '');
           const actionHtml = role === 'assistant' ? renderMessageAction(item.action) : '';
+          const stateClass = isNewMessage ? 'pending' : 'revealed';
           return (
             '<div class="message ' +
             role +
-            ' pending"><div class="content">' +
+            ' ' +
+            stateClass +
+            '"><div class="content">' +
             messageContent +
             '</div>' +
             actionHtml +
@@ -190,7 +242,6 @@ window.addEventListener('message', (event) => {
     })
     .join('');
 
-  const newMessageCount = Math.max(0, messages.length - previousMessageCount);
   const pending = container.querySelectorAll('.message.pending');
   pending.forEach((node, idx) => {
     const delay = idx < newMessageCount ? idx * 140 : 0;
@@ -199,6 +250,10 @@ window.addEventListener('message', (event) => {
       node.classList.add('revealed');
     }, delay);
   });
+
+  if (newMessageCount > 0 && messagesWrap instanceof HTMLElement) {
+    messagesWrap.scrollTop = messagesWrap.scrollHeight;
+  }
 
   previousMessageCount = messages.length;
 });

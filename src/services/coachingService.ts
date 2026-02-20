@@ -6,7 +6,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import type { CoachSettings, NoiseLevel, Subtlety } from '../core/types';
 
 const ALL_CLEAR_TOKEN = 'ALL_CLEAR';
-const SYSTEM_PROMPT =
+const SYSTEM_PROMPT_BASE =
   'You are Coach Potato, a pragmatic senior engineer coach. Be conversational and slightly playful, but technically precise. Lead with hints and questions first. Do not output HTML. Never include concrete code changes, replacement lines, or direct step-by-step fixes before the `Fix:` marker.';
 
 type ActiveSession = {
@@ -28,7 +28,7 @@ export async function requestCoaching(
   const provider = createProvider(settings);
   const prompt = buildPrompt(document, settings.noiseLevel, settings.subtlety, changedDiff);
   const messages: ModelMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: buildSystemPrompt(settings.subtlety) },
     { role: 'user', content: prompt }
   ];
 
@@ -114,6 +114,17 @@ function createProvider(settings: CoachSettings) {
   });
 }
 
+function buildSystemPrompt(subtlety: Subtlety): string {
+  const subtletyInstruction =
+    subtlety === 'gentle'
+      ? 'Tone mode: gentle. Be supportive, calm, and encouraging. Avoid harsh phrasing.'
+      : subtlety === 'direct'
+        ? 'Tone mode: direct. Be concise and practical without being rude.'
+        : 'Tone mode: strict. Be firm, call out risky patterns clearly, and prioritize high-impact issues.';
+
+  return `${SYSTEM_PROMPT_BASE} ${subtletyInstruction}`;
+}
+
 function buildPrompt(document: vscode.TextDocument, noiseLevel: NoiseLevel, subtlety: Subtlety, changedDiff: string): string {
   const language = document.languageId;
 
@@ -133,7 +144,7 @@ function buildPrompt(document: vscode.TextDocument, noiseLevel: NoiseLevel, subt
     `If there are no meaningful issues, return exactly "${ALL_CLEAR_TOKEN}" and nothing else.`,
     toneInstruction,
     'Keep it conversational, like a coaching chat.',
-    'Start with a short opener, for example "Let\'s see..." or "Oh oh, are you sure about this part?".',
+    'Start with a short opener, for example "Let\'s see...", "Mmmm...", "Oh oh, are you sure about this part?". Be creative.',
     'Use this structure exactly:',
     '- **Issue title**',
     '  One or two hint-style lines that point to the problem (question style).',
