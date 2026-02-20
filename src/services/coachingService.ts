@@ -1,13 +1,29 @@
 import * as vscode from 'vscode';
-import { generateText, type ModelMessage } from 'ai';
+import { generateObject, type ModelMessage } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
+import { z } from 'zod';
 
 import type { CoachSettings, NoiseLevel, Subtlety } from '../core/types';
 
-const ALL_CLEAR_TOKEN = 'ALL_CLEAR';
 const SYSTEM_PROMPT_BASE =
-  'You are Coach Potato, a pragmatic senior engineer coach. Be conversational and slightly playful, but technically precise. Lead with hints and questions first. Do not output HTML. Never include concrete code changes, replacement lines, or direct step-by-step fixes before the `Fix:` marker.';
+  'You are Coach Potato, a pragmatic senior engineer coach. Be conversational and slightly playful, but technically precise. Lead with hints and questions first. Do not output HTML. Never include concrete code changes, replacement lines, or direct step-by-step fixes before the `fix` field.';
+
+const coachingResponseSchema = z.object({
+  verdict: z.enum(['all_clear', 'issue']),
+  opener: z.string(),
+  title: z.string(),
+  hint: z.string(),
+  whyItMatters: z.string(),
+  fix: z.string()
+});
+
+const followUpResponseSchema = z.object({
+  opener: z.string(),
+  hint: z.string(),
+  whyItMatters: z.string(),
+  fix: z.string()
+});
 
 type ActiveSession = {
   fileName: string;
@@ -32,14 +48,15 @@ export async function requestCoaching(
     { role: 'user', content: prompt }
   ];
 
-  const result = await generateText({
+  const result = await generateObject({
     model: provider(settings.model),
     messages,
+    schema: coachingResponseSchema,
     temperature: settings.noiseLevel === 'quiet' ? 0.2 : settings.noiseLevel === 'balanced' ? 0.5 : 0.8
   });
 
-  const text = result.text.trim();
-  if (text === ALL_CLEAR_TOKEN) {
+  const response = result.object;
+  if (response.verdict === 'all_clear') {
     activeSession = {
       fileName: document.fileName,
       messages
@@ -47,6 +64,7 @@ export async function requestCoaching(
     return '';
   }
 
+  const text = formatCoachingResponse(response);
   activeSession = {
     fileName: document.fileName,
     messages: [...messages, { role: 'assistant', content: text }]
@@ -73,22 +91,18 @@ export async function requestFollowUp({ settings, question }: FollowUpParams): P
     ...activeSession.messages,
     {
       role: 'user',
-      content: [
-        'Follow-up request on the same issue context only.',
-        'Do not find new issues.',
-        'Guide me with hints/questions first; keep concrete solution only under "Fix:".',
-        `Question: ${question}`
-      ].join('\n')
+      content: buildFollowUpPrompt(question)
     }
   ];
 
-  const result = await generateText({
+  const result = await generateObject({
     model: provider(settings.model),
     messages: nextMessages,
+    schema: followUpResponseSchema,
     temperature: settings.noiseLevel === 'quiet' ? 0.2 : settings.noiseLevel === 'balanced' ? 0.5 : 0.8
   });
 
-  const text = result.text.trim();
+  const text = formatFollowUpResponse(result.object);
   if (!text) {
     return '';
   }
@@ -141,16 +155,15 @@ function buildPrompt(document: vscode.TextDocument, noiseLevel: NoiseLevel, subt
     'If CHANGED DIFF is empty, review FULL FILE CONTEXT instead.',
     'When CHANGED DIFF is present, do not coach about unchanged lines.',
     'Return exactly one coaching suggestion: the single highest-impact issue only.',
-    `If there are no meaningful issues, return exactly "${ALL_CLEAR_TOKEN}" and nothing else.`,
+    `If there are no meaningful issues, set verdict to "all_clear".`,
     toneInstruction,
-    'Keep it conversational, like a coaching chat.',
-    'Start with a short opener, for example "Let\'s see...", "Mmmm...", "Oh oh, are you sure about this part?". Be creative.',
-    'Use this structure exactly:',
-    '- **Issue title**',
-    '  One or two hint-style lines that point to the problem (question style).',
-    '  Why it matters: <short impact statement>.',
-    '  Fix: <concrete fix, optionally with fenced code block>.',
-    'Critical rule: before "Fix:" you must not reveal the concrete patch.',
+    'Output for schema fields:',
+    '- opener: short conversational opener (use empty string if unavailable)',
+    '- title: keep empty unless absolutely necessary; prefer natural chat without headings',
+    '- hint: one or two natural-language hint lines (question style), no concrete patch (empty string if all_clear)',
+    '- whyItMatters: short impact statement (empty string if unavailable)',
+    '- fix: concrete fix, may include fenced code block (empty string if unavailable)',
+    'Critical rule: hint must not reveal the concrete patch.',
     '',
     'CHANGED DIFF:',
     '```diff',
@@ -162,4 +175,68 @@ function buildPrompt(document: vscode.TextDocument, noiseLevel: NoiseLevel, subt
     document.getText(),
     '```'
   ].join('\n');
+}
+
+function buildFollowUpPrompt(question: string): string {
+  return [
+    'Follow-up request on the same issue context only.',
+    'Do not find new issues.',
+    'Return concise coaching content for schema fields.',
+    '- opener: short opener (empty string if not needed)',
+    '- hint: coaching guidance first, no concrete patch',
+    '- whyItMatters: short impact statement (empty string if not needed)',
+    '- fix: concrete fix (empty string if not needed)',
+    'Question:',
+    question
+  ].join('\n');
+}
+
+function stripLeadingBullet(value: string): string {
+  return value
+    .trim()
+    .replace(/^\s*[-*]\s+/, '');
+}
+
+function formatCoachingResponse(response: z.infer<typeof coachingResponseSchema>): string {
+  const parts: string[] = [];
+  const opener = response.opener.trim() ? stripLeadingBullet(response.opener) : "Let's see...";
+  if (opener) {
+    parts.push(opener);
+  }
+
+  const title = response.title.trim();
+  if (response.hint.trim()) {
+    const hint = stripLeadingBullet(response.hint);
+    if (title) {
+      parts.push(`${stripLeadingBullet(title)}. ${hint}`);
+    } else {
+      parts.push(hint);
+    }
+  } else if (title) {
+    parts.push(stripLeadingBullet(title));
+  }
+  if (response.whyItMatters.trim()) {
+    parts.push(`Why it matters: ${response.whyItMatters.trim()}`);
+  }
+  if (response.fix.trim()) {
+    parts.push(`Fix: ${response.fix.trim()}`);
+  }
+  return parts.join('\n\n').trim();
+}
+
+function formatFollowUpResponse(response: z.infer<typeof followUpResponseSchema>): string {
+  const parts: string[] = [];
+  if (response.opener.trim()) {
+    parts.push(stripLeadingBullet(response.opener));
+  }
+  if (response.hint.trim()) {
+    parts.push(stripLeadingBullet(response.hint));
+  }
+  if (response.whyItMatters.trim()) {
+    parts.push(`Why it matters: ${response.whyItMatters.trim()}`);
+  }
+  if (response.fix.trim()) {
+    parts.push(`Fix: ${response.fix.trim()}`);
+  }
+  return parts.join('\n\n').trim();
 }
