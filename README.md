@@ -1,42 +1,71 @@
-# Coach Potato VS Code Extension (Scaffold)
+# Coach Potato
 
-Coach Potato is a starter VS Code extension that analyzes a file whenever you save it and gives AI-powered coaching suggestions.
+Coach Potato is your tiny coding sidekick in VS Code.
+You save a file, it peeks at your diff, and gives one sharp coaching point (or tells you your code is clean).
+Think less "wall of AI text", more "one useful nudge at the right time".
 
-## Features
+## Links
 
-- Hooks into `onDidSaveTextDocument` and reviews saved files.
-- Supports an explicit command: **Coach Potato: Analyze Current File**.
-- Configurable behavior:
-  - `coachPotato.noiseLevel`: `quiet | balanced | chatty`
-  - `coachPotato.subtlety`: `gentle | direct | strict`
-- Provider selection: `coachPotato.provider`: `openai | anthropic`.
+- VS Code Marketplace: `TODO_ADD_MARKETPLACE_LINK`
+- GitHub Releases: `TODO_ADD_RELEASES_LINK`
 
-## Setup
+## Install (Start Here)
+
+### Option A: Install from VS Code Marketplace
+1. Open VS Code.
+2. Open Extensions (`Cmd+Shift+X` / `Ctrl+Shift+X`).
+3. Search for `Coach Potato`.
+4. Click **Install**.
+
+### Option B: Install from a `.vsix` file (from GitHub Releases)
+1. Download the latest `.vsix` from this repo’s Releases page.
+2. Install with command line:
+
+```bash
+code --install-extension coach-potato-<version>.vsix
+```
+
+Or in VS Code:
+1. Open Extensions view.
+2. Click `...` (top-right).
+3. Click **Install from VSIX...**
+4. Select the downloaded file.
+
+## What It Does
+
+- Runs analysis on save (configurable).
+- Focuses on changed lines (diff-first coaching).
+- Gives one high-impact suggestion at a time.
+- Supports follow-up Q&A in the sidebar.
+- Supports providers:
+  - `openai`
+  - `anthropic`
+- Lets you tune coaching tone:
+  - `gentle | direct | strict`
+
+## Local Development
 
 1. Install dependencies:
 
-   ```bash
-   npm install
-   ```
+```bash
+npm install
+```
 
-2. Configure your API key (recommended via environment variable):
+2. Configure API key (recommended via env var):
 
-   ```bash
-   export COACH_POTATO_API_KEY="your-api-key"
-   ```
-
-   Or set `coachPotato.apiKey` in your VS Code settings.
+```bash
+export COACH_POTATO_API_KEY="your-api-key"
+```
 
 3. Build:
 
-   ```bash
-   npm run compile
-   ```
+```bash
+npm run compile
+```
 
 4. Press `F5` in VS Code to run the Extension Development Host.
 
 ## Notes
 
-- This repository intentionally **does not** include any real API key.
-- You can override `coachPotato.apiBaseUrl` for the selected provider endpoint.
-- For production use, consider adding diff-only analysis and debounce/throttling.
+- This repo does not include any API key.
+- You can override `coachPotato.apiBaseUrl` if needed.

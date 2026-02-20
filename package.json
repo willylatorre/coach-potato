@@ -4,6 +4,11 @@
   "description": "A lightweight AI coding companion that reviews edits on save and suggests improvements.",
   "version": "0.0.1",
   "publisher": "coach-potato",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/willylatorre/coach-potato.git"
+  },
   "engines": {
     "vscode": "^1.89.0"
   },
@@ -128,17 +133,27 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "npm run check-types && node esbuild.js",
+    "check-types": "tsc --noEmit --project tsconfig.json",
+    "watch": "npm run watch:esbuild & npm run watch:tsc",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "vscode:prepublish": "npm run package",
+    "package": "npm run check-types && node esbuild.js --production",
     "lint": "eslint src --ext ts",
-    "package": "vsce package"
+    "publish:vsix": "vsce package",
+    "publish:marketplace": "vsce publish",
+    "publish:patch": "vsce publish patch",
+    "publish:minor": "vsce publish minor",
+    "publish:major": "vsce publish major"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
     "@types/vscode": "^1.89.0",
     "@typescript-eslint/eslint-plugin": "^7.7.1",
     "@typescript-eslint/parser": "^7.7.1",
+    "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.27.3",
     "eslint": "^8.57.0",
     "typescript": "^5.4.5"
   },
