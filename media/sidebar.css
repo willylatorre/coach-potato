@@ -157,13 +157,13 @@ h1 {
   background: transparent;
 }
 
-.content details.fix {
+.content details.accordion {
   margin-top: 8px;
   border-top: 1px dashed color-mix(in srgb, var(--vscode-editorWidget-border) 65%, transparent);
   padding-top: 6px;
 }
 
-.content details.fix > summary {
+.content details.accordion > summary {
   cursor: pointer;
   color: var(--vscode-textLink-foreground);
   font-weight: 600;
@@ -197,7 +197,7 @@ h1 {
 }
 
 .thinking {
-  margin-top: 6px;
+  margin-bottom: 6px;
   margin-left: 2px;
   font-size: 11px;
   opacity: 0.65;
@@ -205,6 +205,17 @@ h1 {
 }
 
 .thinking.hidden {
+  display: none;
+}
+
+.resultStatus {
+  margin-bottom: 6px;
+  margin-left: 2px;
+  font-size: 10px;
+  opacity: 0.62;
+}
+
+.resultStatus.hidden {
   display: none;
 }
 

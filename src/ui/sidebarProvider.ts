@@ -16,6 +16,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private messages: CoachMessage[] = [createWelcomeMessage()];
   private hasApiKey = false;
   private thinkingLabel = '';
+  private resultStatus = '';
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -57,7 +58,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (messages.length === 0) {
       return;
     }
-    this.messages = [...messages, ...this.messages].slice(0, 50);
+    this.messages = [...this.messages, ...messages].slice(-50);
     this.postMessages();
   }
 
@@ -71,13 +72,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this.postMessages();
   }
 
+  setResultStatus(label: string): void {
+    this.resultStatus = label;
+    this.postMessages();
+  }
+
   getLatestRunContext(): { timestamp: string; fileName: string; messages: string[] } | undefined {
-    const firstNonWelcome = this.messages.find((message) => message.fileName !== 'Coach Potato');
-    if (!firstNonWelcome) {
+    const latestNonWelcome = [...this.messages].reverse().find((message) => message.fileName !== 'Coach Potato');
+    if (!latestNonWelcome) {
       return undefined;
     }
 
-    const key = `${firstNonWelcome.timestamp}|${firstNonWelcome.fileName}`;
+    const key = `${latestNonWelcome.timestamp}|${latestNonWelcome.fileName}`;
     const runMessages: string[] = [];
 
     for (const message of this.messages) {
@@ -88,8 +94,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     return {
-      timestamp: firstNonWelcome.timestamp,
-      fileName: firstNonWelcome.fileName,
+      timestamp: latestNonWelcome.timestamp,
+      fileName: latestNonWelcome.fileName,
       messages: runMessages
     };
   }
@@ -102,7 +108,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       type: 'messages',
       messages: this.messages,
       hasApiKey: this.hasApiKey,
-      thinkingLabel: this.thinkingLabel
+      thinkingLabel: this.thinkingLabel,
+      resultStatus: this.resultStatus
     });
   }
 }

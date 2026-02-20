@@ -16,6 +16,11 @@ export function splitFeedbackIntoBubbles(feedback: string): string[] {
     return [];
   }
 
+  const suggestionHeadings = normalized.match(/(^|\n)-\s+\*\*/g) ?? [];
+  if (suggestionHeadings.length <= 1) {
+    return [normalized];
+  }
+
   const bulletBlocks = normalized
     .split(/\n(?=-\s+\*\*|-\s+[^\n]+)/)
     .map((part) => part.trim())
@@ -37,25 +42,7 @@ export function normalizeBubbleForHintMode(bubble: string): string {
     return normalized;
   }
 
-  if (/(?:^|\n)(?:\*\*Fix:\*\*|Fix:)\s*/i.test(normalized)) {
-    return normalized;
-  }
-
-  const paragraphs = normalized
-    .split(/\n{2,}/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  if (paragraphs.length > 1) {
-    return `${paragraphs[0]}\n\nFix:\n${paragraphs.slice(1).join('\n\n')}`;
-  }
-
-  const sentences = normalized.split(/(?<=[.!?])\s+/).filter(Boolean);
-  if (sentences.length > 2) {
-    return `${sentences.slice(0, 2).join(' ')}\n\nFix:\n${sentences.slice(2).join(' ')}`;
-  }
-
-  return `${normalized}\n\nFix:\nAsk Coach Potato to regenerate this point with a concrete patch.`;
+  return normalized;
 }
 
 export function createNoDiffPromptMessage(fileName: string, subtlety: Subtlety): CoachMessage {
@@ -76,5 +63,21 @@ export function createNoDiffPromptMessage(fileName: string, subtlety: Subtlety):
       label: 'Yes, do it',
       fileName
     }
+  };
+}
+
+export function createAllClearMessage(fileName: string, subtlety: Subtlety): CoachMessage {
+  const content =
+    subtlety === 'gentle'
+      ? 'Nice work. I reviewed it and do not see a meaningful issue to change right now.'
+      : subtlety === 'direct'
+        ? 'Looks good. I do not see a high-impact issue in this code right now.'
+        : 'Solid pass. No high-impact issue detected in the current code.';
+
+  return {
+    timestamp: new Date().toISOString(),
+    fileName,
+    role: 'assistant',
+    content
   };
 }
